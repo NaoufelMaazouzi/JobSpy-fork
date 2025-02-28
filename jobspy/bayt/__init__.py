@@ -42,10 +42,26 @@ class BaytScraper(Scraper):
         results_wanted = (
             scraper_input.results_wanted if scraper_input.results_wanted else 10
         )
+        
+        # Extract city from location if available
+        city = None
+        if scraper_input.location:
+            city = scraper_input.location
+            
+        # Get country from scraper_input
+        country = None
+        if hasattr(scraper_input, 'country_indeed') and scraper_input.country_indeed:
+            # Use the first part of the name (before any comma)
+            country_name = scraper_input.country_indeed.name.lower().split(',')[0]
+            country = country_name
+        elif self.country and self.country.strip():
+            country = self.country
+        # country may still be None here, which will be handled in _fetch_jobs
+        print('COUNTRY:', country)
 
         while len(job_list) < results_wanted:
             log.info(f"Fetching Bayt jobs page {page}")
-            job_elements = self._fetch_jobs(self.scraper_input.search_term, page)
+            job_elements = self._fetch_jobs(self.scraper_input.search_term, country, city, page)
             if not job_elements:
                 break
 
@@ -81,12 +97,27 @@ class BaytScraper(Scraper):
         job_list = job_list[: scraper_input.results_wanted]
         return JobResponse(jobs=job_list)
 
-    def _fetch_jobs(self, query: str, page: int) -> list | None:
+    def _fetch_jobs(self, query: str, country: str, city: str, page: int) -> list | None:
         """
         Grabs the job results for the given query and page number.
         """
         try:
-            url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
+            # Handle all possible combinations of country and city
+            if country and country.strip() and city and city.strip():
+                # Both country and city are available
+                url = f"{self.base_url}/en/{country}/jobs/{query}-jobs-in-{city}/?page={page}"
+            elif country and country.strip():
+                # Only country is available
+                url = f"{self.base_url}/en/{country}/jobs/{query}-jobs/?page={page}"
+            elif city and city.strip():
+                # Only city is available (use worldwide as default country)
+                url = f"{self.base_url}/en/worldwide/jobs/{query}-jobs-in-{city}/?page={page}"
+            else:
+                # Neither country nor city is available
+                url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
+            
+            print('URLLLLLL:', url)
+                
             response = self.session.get(url)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
@@ -124,9 +155,23 @@ class BaytScraper(Scraper):
         location = location_tag.get_text(strip=True) if location_tag else None
 
         job_id = f"bayt-{abs(hash(job_url))}"
+        
+        # Use the country from scraper_input if available
+        country_obj = None
+        if hasattr(self.scraper_input, 'country_indeed') and self.scraper_input.country_indeed:
+            country_obj = self.scraper_input.country_indeed
+        else:
+            try:
+                country_obj = Country.from_string(self.country)
+            except:
+                # Default to worldwide if country is invalid
+                country_obj = Country.WORLDWIDE
+
+        print('COUNTRY_OBJ:', country_obj)
+
         location_obj = Location(
             city=location,
-            country=Country.from_string(self.country),
+            country=country_obj,
         )
         return JobPost(
             id=job_id,
