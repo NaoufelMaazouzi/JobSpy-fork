@@ -116,7 +116,7 @@ class BaytScraper(Scraper):
                 # Neither country nor city is available
                 url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
             
-            print('URLLLLLL:', url)
+            print('URLLLLLLL:', url)
                 
             response = self.session.get(url)
             response.raise_for_status()
