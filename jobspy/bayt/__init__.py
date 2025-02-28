@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import random
 import time
+import concurrent.futures
+from typing import List, Optional
 
 from bs4 import BeautifulSoup
 
@@ -29,6 +31,7 @@ class BaytScraper(Scraper):
     base_url = "https://www.bayt.com"
     delay = 2
     band_delay = 3
+    max_workers_limit = 20  # Maximum limit for worker threads
 
     def __init__(
         self, proxies: list[str] | str | None = None, ca_cert: str | None = None
@@ -44,7 +47,6 @@ class BaytScraper(Scraper):
             proxies=self.proxies, ca_cert=self.ca_cert, is_tls=False, has_retry=True
         )
         job_list: list[JobPost] = []
-        page = 1
         results_wanted = (
             scraper_input.results_wanted if scraper_input.results_wanted else 10
         )
@@ -76,42 +78,94 @@ class BaytScraper(Scraper):
                 
         log.info(f"COUNTRY: {country}")
 
-        while len(job_list) < results_wanted:
-            log.info(f"Fetching Bayt jobs page {page}")
-            job_elements = self._fetch_jobs(self.scraper_input.search_term, country, city, page)
-            if not job_elements:
-                break
-
-            if job_elements:
-                log.debug(
-                    "First job element snippet:\n" + job_elements[0].prettify()[:500]
-                )
-
-            initial_count = len(job_list)
-            for job in job_elements:
+        # Start with fetching the first page to determine if there are results
+        log.info("Fetching Bayt jobs page 1")
+        first_page_elements = self._fetch_jobs(self.scraper_input.search_term, country, city, 1)
+        
+        if not first_page_elements:
+            return JobResponse(jobs=[])
+        
+        # Dynamically set max_workers for first page based on number of job elements
+        first_page_max_workers = min(self.max_workers_limit, len(first_page_elements))
+        log.info(f"Processing first page with {first_page_max_workers} workers")
+            
+        # Use ThreadPoolExecutor to process first page jobs in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=first_page_max_workers) as executor:
+            # Process first page jobs
+            first_page_futures = [
+                executor.submit(self._extract_job_info, job)
+                for job in first_page_elements
+            ]
+            
+            # Add valid job posts from first page
+            for future in concurrent.futures.as_completed(first_page_futures):
                 try:
-                    job_post = self._extract_job_info(job)
+                    job_post = future.result()
                     if job_post:
                         job_list.append(job_post)
                         if len(job_list) >= results_wanted:
                             break
-                    else:
-                        log.debug(
-                            "Extraction returned None. Job snippet:\n"
-                            + job.prettify()[:500]
-                        )
                 except Exception as e:
                     log.error(f"Bayt: Error extracting job info: {str(e)}")
-                    continue
+        
+        # If we need more results, fetch additional pages in parallel
+        if len(job_list) < results_wanted:
+            # Determine how many more pages to fetch (up to 5 more pages)
+            max_additional_pages = 5
+            pages_to_fetch = list(range(2, 2 + max_additional_pages))
+            
+            # Dynamically set max_workers for page fetching
+            page_max_workers = min(self.max_workers_limit, len(pages_to_fetch))
+            log.info(f"Fetching additional pages with {page_max_workers} workers")
+            
+            # Use ThreadPoolExecutor to fetch pages in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=page_max_workers) as page_executor:
+                # Submit page fetching tasks
+                page_futures = {
+                    page_executor.submit(self._fetch_jobs, self.scraper_input.search_term, country, city, page): page
+                    for page in pages_to_fetch
+                }
+                
+                # Process results as they complete
+                for future in concurrent.futures.as_completed(page_futures):
+                    page = page_futures[future]
+                    try:
+                        job_elements = future.result()
+                        if not job_elements:
+                            continue
+                            
+                        log.info(f"Processing results from page {page}")
+                        
+                        # Dynamically set max_workers for job processing based on number of jobs
+                        job_max_workers = min(self.max_workers_limit, len(job_elements))
+                        log.info(f"Processing page {page} with {job_max_workers} workers")
+                        
+                        # Process jobs from this page in parallel
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=job_max_workers) as job_executor:
+                            job_futures = [
+                                job_executor.submit(self._extract_job_info, job)
+                                for job in job_elements
+                            ]
+                            
+                            # Collect results
+                            for job_future in concurrent.futures.as_completed(job_futures):
+                                try:
+                                    job_post = job_future.result()
+                                    if job_post:
+                                        job_list.append(job_post)
+                                        if len(job_list) >= results_wanted:
+                                            break
+                                except Exception as e:
+                                    log.error(f"Bayt: Error extracting job info: {str(e)}")
+                                    
+                            if len(job_list) >= results_wanted:
+                                break
+                                
+                    except Exception as e:
+                        log.error(f"Bayt: Error fetching page {page}: {str(e)}")
 
-            if len(job_list) == initial_count:
-                log.info(f"No new jobs found on page {page}. Ending pagination.")
-                break
-
-            page += 1
-            time.sleep(random.uniform(self.delay, self.delay + self.band_delay))
-
-        job_list = job_list[: scraper_input.results_wanted]
+        # Ensure we don't return more jobs than requested
+        job_list = job_list[:results_wanted]
         return JobResponse(jobs=job_list)
 
     def _fetch_jobs(self, query: str, country: str, city: str, page: int) -> list | None:
