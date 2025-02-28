@@ -50,12 +50,19 @@ class BaytScraper(Scraper):
             
         # Get country from scraper_input
         country = None
-        if hasattr(scraper_input, 'country_indeed') and scraper_input.country_indeed:
+        if hasattr(scraper_input, 'country') and scraper_input.country:
             # Use the first part of the name (before any comma)
-            country_name = scraper_input.country_indeed.name.lower().split(',')[0]
+            country_name = scraper_input.country.name.lower().split(',')[0]
             country = country_name
-        elif self.country and self.country.strip():
-            country = self.country
+        else:
+            # Use Country.from_string for the fallback case
+            try:
+                country_enum = Country.from_string(self.country)
+                country = country_enum.name.lower().split(',')[0]
+            except:
+                # Default to worldwide if country is invalid
+                country = "international"
+                
         # country may still be None here, which will be handled in _fetch_jobs
         log.info(f"COUNTRY: {country}")
 
@@ -102,19 +109,22 @@ class BaytScraper(Scraper):
         Grabs the job results for the given query and page number.
         """
         try:
+            # Format query by replacing spaces with hyphens for multi-word queries
+            formatted_query = query.replace(" ", "-") if query else ""
+            
             # Handle all possible combinations of country and city
             if country and country.strip() and city and city.strip():
                 # Both country and city are available
-                url = f"{self.base_url}/en/{country}/jobs/{query}-jobs-in-{city}/?page={page}"
+                url = f"{self.base_url}/en/{country}/jobs/{formatted_query}-jobs-in-{city}/?page={page}"
             elif country and country.strip():
                 # Only country is available
-                url = f"{self.base_url}/en/{country}/jobs/{query}-jobs/?page={page}"
+                url = f"{self.base_url}/en/{country}/jobs/{formatted_query}-jobs/?page={page}"
             elif city and city.strip():
-                # Only city is available (use worldwide as default country)
-                url = f"{self.base_url}/en/worldwide/jobs/{query}-jobs-in-{city}/?page={page}"
+                # Only city is available (use international as default country)
+                url = f"{self.base_url}/en/international/jobs/{formatted_query}-jobs-in-{city}/?page={page}"
             else:
                 # Neither country nor city is available
-                url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
+                url = f"{self.base_url}/en/international/jobs/{formatted_query}-jobs/?page={page}"
             
             log.info(f"URLLLLLLL: {url}")
                 
@@ -156,16 +166,11 @@ class BaytScraper(Scraper):
 
         job_id = f"bayt-{abs(hash(job_url))}"
         
-        # Use the country from scraper_input if available
-        country_obj = None
-        if hasattr(self.scraper_input, 'country_indeed') and self.scraper_input.country_indeed:
-            country_obj = self.scraper_input.country_indeed
-        else:
-            try:
-                country_obj = Country.from_string(self.country)
-            except:
-                # Default to worldwide if country is invalid
-                country_obj = Country.WORLDWIDE
+        # Use Country.from_string directly, with fallback to WORLDWIDE
+        try:
+            country_obj = Country.from_string(self.country)
+        except:
+            country_obj = Country.WORLDWIDE
 
         log.info(f"COUNTRY_OBJ: {country_obj}")
 
