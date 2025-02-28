@@ -30,7 +30,7 @@ class BaytScraper(Scraper):
         super().__init__(Site.BAYT, proxies=proxies, ca_cert=ca_cert)
         self.scraper_input = None
         self.session = None
-        self.country = "worldwide"
+        self.country_enum = Country.WORLDWIDE
 
     def scrape(self, scraper_input: ScraperInput) -> JobResponse:
         self.scraper_input = scraper_input
@@ -54,16 +54,13 @@ class BaytScraper(Scraper):
             # Use the first part of the name (before any comma)
             country_name = scraper_input.country.name.lower().split(',')[0]
             country = country_name
+            # Store the country enum in self.country_enum for _extract_job_info
+            self.country_enum = scraper_input.country
         else:
-            # Use Country.from_string for the fallback case
-            try:
-                country_enum = Country.from_string(self.country)
-                country = country_enum.name.lower().split(',')[0]
-            except:
-                # Default to worldwide if country is invalid
-                country = "international"
+            # Default to international if no country is specified
+            country = "international"
+            self.country_enum = Country.WORLDWIDE
                 
-        # country may still be None here, which will be handled in _fetch_jobs
         log.info(f"COUNTRY: {country}")
 
         while len(job_list) < results_wanted:
@@ -166,17 +163,9 @@ class BaytScraper(Scraper):
 
         job_id = f"bayt-{abs(hash(job_url))}"
         
-        # Use Country.from_string directly, with fallback to WORLDWIDE
-        try:
-            country_obj = Country.from_string(self.country)
-        except:
-            country_obj = Country.WORLDWIDE
-
-        log.info(f"COUNTRY_OBJ: {country_obj}")
-
         location_obj = Location(
             city=location,
-            country=country_obj,
+            country=self.country_enum,
         )
         return JobPost(
             id=job_id,
