@@ -345,3 +345,67 @@ desired_order = [
     "company_revenue",
     "company_description",
 ]
+
+# Bayt specific utility functions
+BAYT_VALID_COUNTRIES = [
+    "algeria", "bahrain", "egypt", "india", "iraq", "jordan", "kuwait", 
+    "lebanon", "libya", "morocco", "oman", "pakistan", "qatar", 
+    "saudi-arabia", "sri-lanka", "tunisia", "uae", "yemen"
+]
+
+BAYT_VALID_CITIES = [
+    "manama", "alexandria", "cairo", "baghdad", "amman", "al-kuwait", 
+    "beirut", "casablanca", "muscat", "doha", "dammam", "eastern-province", 
+    "jeddah", "jubail", "khobar", "mecca", "medina", "riyadh", "tunis", 
+    "abu-dhabi", "ajman", "al-ain", "dubai", "fujairah", "ras-al-khaimah", "sharjah"
+]
+
+def is_valid_bayt_country(country: str) -> bool:
+    """
+    Check if a country is valid for Bayt job search.
+    
+    Args:
+        country: The country name to check
+        
+    Returns:
+        bool: True if the country is valid, False otherwise
+    """
+    if not country:
+        return False
+    
+    # Format country by replacing spaces with hyphens and converting to lowercase
+    formatted_country = country.lower().replace(" ", "-")
+    return formatted_country in BAYT_VALID_COUNTRIES
+
+def is_valid_bayt_city(city: str) -> bool:
+    """
+    Check if a city is valid for Bayt job search.
+    
+    Args:
+        city: The city name to check
+        
+    Returns:
+        bool: True if the city is valid, False otherwise
+    """
+    if not city:
+        return False
+    
+    # Format city by replacing spaces with hyphens and converting to lowercase
+    formatted_city = city.lower().replace(" ", "-")
+    return formatted_city in BAYT_VALID_CITIES
+
+def format_bayt_location(location: str) -> str:
+    """
+    Format a location string for Bayt job search by replacing spaces with hyphens
+    and converting to lowercase.
+    
+    Args:
+        location: The location string to format
+        
+    Returns:
+        str: The formatted location string
+    """
+    if not location:
+        return ""
+    
+    return location.lower().replace(" ", "-")

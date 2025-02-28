@@ -14,7 +14,13 @@ from jobspy.model import (
     Location,
     Country,
 )
-from jobspy.util import create_logger, create_session
+from jobspy.util import (
+    create_logger, 
+    create_session, 
+    is_valid_bayt_country, 
+    is_valid_bayt_city, 
+    format_bayt_location
+)
 
 log = create_logger("Bayt")
 
@@ -47,6 +53,9 @@ class BaytScraper(Scraper):
         city = None
         if scraper_input.location:
             city = scraper_input.location
+            # Validate city
+            if not is_valid_bayt_city(city):
+                log.info(f"City '{city}' is not in the list of valid Bayt cities. Search results may be limited.")
             
         # Get country from scraper_input
         country = None
@@ -54,6 +63,10 @@ class BaytScraper(Scraper):
             # Use the first part of the name (before any comma)
             country_name = scraper_input.country.name.lower().split(',')[0]
             country = country_name
+            # Validate country
+            if not is_valid_bayt_country(country):
+                log.info(f"Country '{country}' is not in the list of valid Bayt countries. Using 'international' instead.")
+                country = "international"
             # Store the country enum in self.country_enum for _extract_job_info
             self.country_enum = scraper_input.country
         else:
@@ -107,18 +120,26 @@ class BaytScraper(Scraper):
         """
         try:
             # Format query by replacing spaces with hyphens for multi-word queries
-            formatted_query = query.replace(" ", "-") if query else ""
+            formatted_query = format_bayt_location(query) if query else ""
+            
+            # Format country and city
+            formatted_country = format_bayt_location(country) if country else ""
+            
+            # Only use city in URL if it's valid
+            formatted_city = ""
+            if city and is_valid_bayt_city(city):
+                formatted_city = format_bayt_location(city)
             
             # Handle all possible combinations of country and city
-            if country and country.strip() and city and city.strip():
-                # Both country and city are available
-                url = f"{self.base_url}/en/{country}/jobs/{formatted_query}-jobs-in-{city}/?page={page}"
-            elif country and country.strip():
-                # Only country is available
-                url = f"{self.base_url}/en/{country}/jobs/{formatted_query}-jobs/?page={page}"
-            elif city and city.strip():
+            if formatted_country and formatted_city:
+                # Both country and city are available and city is valid
+                url = f"{self.base_url}/en/{formatted_country}/jobs/{formatted_query}-jobs-in-{formatted_city}/?page={page}"
+            elif formatted_country:
+                # Only country is available or city is invalid
+                url = f"{self.base_url}/en/{formatted_country}/jobs/{formatted_query}-jobs/?page={page}"
+            elif formatted_city:
                 # Only city is available (use international as default country)
-                url = f"{self.base_url}/en/international/jobs/{formatted_query}-jobs-in-{city}/?page={page}"
+                url = f"{self.base_url}/en/international/jobs/{formatted_query}-jobs-in-{formatted_city}/?page={page}"
             else:
                 # Neither country nor city is available
                 url = f"{self.base_url}/en/international/jobs/{formatted_query}-jobs/?page={page}"
