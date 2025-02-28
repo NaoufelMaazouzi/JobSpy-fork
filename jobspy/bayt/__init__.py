@@ -57,7 +57,7 @@ class BaytScraper(Scraper):
         elif self.country and self.country.strip():
             country = self.country
         # country may still be None here, which will be handled in _fetch_jobs
-        print('COUNTRY:', country)
+        log.info(f"COUNTRY: {country}")
 
         while len(job_list) < results_wanted:
             log.info(f"Fetching Bayt jobs page {page}")
@@ -116,7 +116,7 @@ class BaytScraper(Scraper):
                 # Neither country nor city is available
                 url = f"{self.base_url}/en/international/jobs/{query}-jobs/?page={page}"
             
-            print('URLLLLLLL:', url)
+            log.info(f"URLLLLLLL: {url}")
                 
             response = self.session.get(url)
             response.raise_for_status()
@@ -167,7 +167,7 @@ class BaytScraper(Scraper):
                 # Default to worldwide if country is invalid
                 country_obj = Country.WORLDWIDE
 
-        print('COUNTRY_OBJ:', country_obj)
+        log.info(f"COUNTRY_OBJ: {country_obj}")
 
         location_obj = Location(
             city=location,
