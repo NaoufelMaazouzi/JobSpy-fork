@@ -65,6 +65,8 @@ class BaytScraper(Scraper):
             # Use the first part of the name (before any comma)
             country_name = scraper_input.country.name.lower().split(',')[0]
             country = country_name
+            if country == "unitedarabemirates":
+                country = "uae"
             # Validate country
             if not is_valid_bayt_country(country):
                 log.info(f"Country '{country}' is not in the list of valid Bayt countries. Using 'international' instead.")
