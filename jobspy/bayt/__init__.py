@@ -111,7 +111,7 @@ class BaytScraper(Scraper):
         # If we need more results, fetch additional pages in parallel
         if len(job_list) < results_wanted:
             # Determine how many more pages to fetch (up to 5 more pages)
-            max_additional_pages = 5
+            max_additional_pages = 1000
             pages_to_fetch = list(range(2, 2 + max_additional_pages))
             
             # Dynamically set max_workers for page fetching
