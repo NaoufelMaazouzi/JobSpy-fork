@@ -126,7 +126,6 @@ class BaytScraper(Scraper):
             
             # Limit to actual available pages
             max_additional_pages = min(estimated_pages_needed, total_pages - 1)
-            log.info(f"Need to fetch {max_additional_pages} more pages to get {remaining_results_needed} more results")
             
             # Generate list of pages to fetch (starting from page 2)
             pages_to_fetch = list(range(2, 2 + max_additional_pages))
