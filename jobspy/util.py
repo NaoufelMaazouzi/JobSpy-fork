@@ -373,6 +373,8 @@ def is_valid_bayt_country(country: str) -> bool:
     if not country:
         return False
     
+    if country.lower() == "united arab emirates":
+        country = "uae"
     # Format country by replacing spaces with hyphens and converting to lowercase
     formatted_country = country.lower().replace(" ", "-")
     return formatted_country in BAYT_VALID_COUNTRIES
