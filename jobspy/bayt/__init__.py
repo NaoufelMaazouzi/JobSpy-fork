@@ -80,10 +80,16 @@ class BaytScraper(Scraper):
 
         # Start with fetching the first page to determine if there are results
         log.info("Fetching Bayt jobs page 1")
-        first_page_elements = self._fetch_jobs(self.scraper_input.search_term, country, city, 1)
+        first_page_result = self._fetch_jobs(self.scraper_input.search_term, country, city, 1)
+        first_page_elements, total_jobs = first_page_result
         
         if not first_page_elements:
             return JobResponse(jobs=[])
+        
+        # Calculate total number of pages based on total jobs (20 jobs per page)
+        jobs_per_page = 20
+        total_pages = (total_jobs + jobs_per_page - 1) // jobs_per_page  # Ceiling division
+        log.info(f"Total jobs: {total_jobs}, Total pages: {total_pages}")
         
         # Dynamically set max_workers for first page based on number of job elements
         first_page_max_workers = min(self.max_workers_limit, len(first_page_elements))
@@ -109,9 +115,18 @@ class BaytScraper(Scraper):
                     log.error(f"Bayt: Error extracting job info: {str(e)}")
         
         # If we need more results, fetch additional pages in parallel
-        if len(job_list) < results_wanted:
-            # Determine how many more pages to fetch (up to 5 more pages)
-            max_additional_pages = 1000
+        if len(job_list) < results_wanted and total_pages > 1:
+            # Calculate how many more pages we need to fetch
+            # We already fetched page 1, so we start from page 2
+            # We only need to fetch enough pages to get results_wanted jobs
+            remaining_results_needed = results_wanted - len(job_list)
+            estimated_pages_needed = (remaining_results_needed + jobs_per_page - 1) // jobs_per_page
+            
+            # Limit to actual available pages
+            max_additional_pages = min(estimated_pages_needed, total_pages - 1)
+            log.info(f"Need to fetch {max_additional_pages} more pages to get {remaining_results_needed} more results")
+            
+            # Generate list of pages to fetch (starting from page 2)
             pages_to_fetch = list(range(2, 2 + max_additional_pages))
             
             # Dynamically set max_workers for page fetching
@@ -122,7 +137,10 @@ class BaytScraper(Scraper):
             with concurrent.futures.ThreadPoolExecutor(max_workers=page_max_workers) as page_executor:
                 # Submit page fetching tasks
                 page_futures = {
-                    page_executor.submit(self._fetch_jobs, self.scraper_input.search_term, country, city, page): page
+                    page_executor.submit(
+                        lambda p: self._fetch_jobs(self.scraper_input.search_term, country, city, p)[0],
+                        page
+                    ): page
                     for page in pages_to_fetch
                 }
                 
@@ -168,9 +186,14 @@ class BaytScraper(Scraper):
         job_list = job_list[:results_wanted]
         return JobResponse(jobs=job_list)
 
-    def _fetch_jobs(self, query: str, country: str, city: str, page: int) -> list | None:
+    def _fetch_jobs(self, query: str, country: str, city: str, page: int) -> tuple[list | None, int]:
         """
         Grabs the job results for the given query and page number.
+        
+        Returns:
+            tuple: (job_listings, total_jobs_count)
+                - job_listings: List of job elements or None if error
+                - total_jobs_count: Total number of jobs found (0 if not found)
         """
         try:
             # Format query by replacing spaces with hyphens for multi-word queries
@@ -203,12 +226,25 @@ class BaytScraper(Scraper):
             response = self.session.get(url)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Extract total number of jobs found
+            total_jobs = 0
+            jobs_found_element = soup.find("b", attrs={"data-automation-id": "XJobsFound"})
+            if jobs_found_element:
+                jobs_text = jobs_found_element.get_text(strip=True)
+                # Extract the number from text like "8 jobs found"
+                try:
+                    total_jobs = int(jobs_text.split()[0])
+                    log.info(f"Total jobs found: {total_jobs}")
+                except (ValueError, IndexError):
+                    log.warning(f"Could not parse total jobs count from: {jobs_text}")
+            
             job_listings = soup.find_all("li", attrs={"data-js-job": ""})
-            log.debug(f"Found {len(job_listings)} job listing elements")
-            return job_listings
+            log.debug(f"Found {len(job_listings)} job listing elements on page {page}")
+            return job_listings, total_jobs
         except Exception as e:
             log.error(f"Bayt: Error fetching jobs - {str(e)}")
-            return None
+            return None, 0
 
     def _extract_job_info(self, job: BeautifulSoup) -> JobPost | None:
         """
